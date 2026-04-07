@@ -1,0 +1,20 @@
+<div class="sidebar">
+    <div class="sidebar-logo">📚 <span>Book</span>Store</div>
+    <nav class="nav">
+        <a href="dashboard.php" class="<?= basename($_SERVER['PHP_SELF']) === 'dashboard.php' ? 'active' : '' ?>">
+            <span class="icon">🏠</span> Dashboard
+        </a>
+        <a href="books.php" class="<?= basename($_SERVER['PHP_SELF']) === 'books.php' ? 'active' : '' ?>">
+            <span class="icon">📚</span> Books
+        </a>
+        <a href="categories.php" class="<?= basename($_SERVER['PHP_SELF']) === 'categories.php' ? 'active' : '' ?>">
+            <span class="icon">🏷️</span> Categories
+        </a>
+        <a href="orders.php" class="<?= basename($_SERVER['PHP_SELF']) === 'orders.php' ? 'active' : '' ?>">
+            <span class="icon">📦</span> Orders
+        </a>
+    </nav>
+    <div class="logout">
+        <a href="logout.php">🚪 Logout</a>
+    </div>
+</div>

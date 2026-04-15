@@ -79,11 +79,24 @@
 
 <script>
 const bookId = new URLSearchParams(window.location.search).get('id');
+const adminToken = localStorage.getItem('admin_token');
+if (!adminToken) window.location.href = '/bookstore_api/admin/login.php';
+
+async function apiFetch(url, options = {}) {
+    return fetch(url, {
+        ...options,
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + adminToken,
+            ...(options.headers || {})
+        }
+    });
+}
 
 async function loadData() {
     const [booksRes, catsRes] = await Promise.all([
-        fetch('/bookstore_api/api/admin/admin_books.php'),
-        fetch('/bookstore_api/api/admin/admin_categories.php')
+        apiFetch('/bookstore_api/api/admin/admin_books.php'),
+        apiFetch('/bookstore_api/api/admin/admin_categories.php')
     ]);
     const booksData = await booksRes.json();
     const catsData  = await catsRes.json();
@@ -113,7 +126,7 @@ async function updateBook() {
     document.getElementById('success').style.display = 'none';
     document.getElementById('error').style.display   = 'none';
 
-    const res = await fetch('/bookstore_api/api/admin/admin_books.php', {
+    const res = await apiFetch('/bookstore_api/api/admin/admin_books.php', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -5,6 +5,9 @@ header('Access-Control-Allow-Methods: GET, PUT');
 header('Access-Control-Allow-Headers: Content-Type');
 
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../config/admin_auth.php'; 
+
+requireAdminAuth(); 
 
 $pdo    = getDB();
 $method = $_SERVER['REQUEST_METHOD'];
@@ -39,9 +42,37 @@ switch ($method) {
         break;
 
     case 'PUT':
-        $data   = json_decode(file_get_contents('php://input'), true);
-        $stmt   = $pdo->prepare('UPDATE orders SET o_status = ? WHERE order_id = ?');
-        $stmt->execute([$data['status'], $data['order_id']]);
+        $data      = json_decode(file_get_contents('php://input'), true);
+        $orderId   = $data['order_id'];
+        $newStatus = $data['status'];
+
+        // Get the current status before updating
+        $stmt = $pdo->prepare('SELECT o_status FROM orders WHERE order_id = ?');
+        $stmt->execute([$orderId]);
+        $current = $stmt->fetch();
+
+        // Restore stock only if transitioning TO cancelled (not already cancelled)
+        if ($newStatus === 'cancelled' && $current['o_status'] !== 'cancelled') {
+            $items = $pdo->prepare('SELECT book_id, oi_quantity FROM order_items WHERE order_id = ?');
+            $items->execute([$orderId]);
+            foreach ($items->fetchAll() as $item) {
+                $restore = $pdo->prepare('UPDATE books SET b_stock = b_stock + ? WHERE book_id = ?');
+                $restore->execute([$item['oi_quantity'], $item['book_id']]);
+            }
+        }
+
+        // If un-cancelling (e.g. cancelled → pending), deduct stock again
+        if ($current['o_status'] === 'cancelled' && $newStatus !== 'cancelled') {
+            $items = $pdo->prepare('SELECT book_id, oi_quantity FROM order_items WHERE order_id = ?');
+            $items->execute([$orderId]);
+            foreach ($items->fetchAll() as $item) {
+                $restore = $pdo->prepare('UPDATE books SET b_stock = b_stock - ? WHERE book_id = ?');
+                $restore->execute([$item['oi_quantity'], $item['book_id']]);
+            }
+        }
+
+        $stmt = $pdo->prepare('UPDATE orders SET o_status = ? WHERE order_id = ?');
+        $stmt->execute([$newStatus, $orderId]);
         echo json_encode(['message' => 'Order status updated']);
         break;
 }

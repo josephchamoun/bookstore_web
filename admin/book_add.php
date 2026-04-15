@@ -78,8 +78,22 @@
 </div>
 
 <script>
+const adminToken = localStorage.getItem('admin_token');
+if (!adminToken) window.location.href = '/bookstore_api/admin/login.php';
+
+async function apiFetch(url, options = {}) {
+    return fetch(url, {
+        ...options,
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + adminToken,
+            ...(options.headers || {})
+        }
+    });
+}
+
 async function loadCategories() {
-    const res  = await fetch('/bookstore_api/api/admin/admin_categories.php');
+    const res  = await apiFetch('/bookstore_api/api/admin/admin_categories.php');
     const data = await res.json();
     const sel  = document.getElementById('category');
     (data.categories || []).forEach(c => {
@@ -95,12 +109,12 @@ function previewCover() {
 }
 
 async function addBook() {
-    const title     = document.getElementById('title').value.trim();
-    const author    = document.getElementById('author').value.trim();
-    const category  = document.getElementById('category').value;
-    const price     = document.getElementById('price').value;
-    const stock     = document.getElementById('stock').value;
-    const coverUrl  = document.getElementById('coverUrl').value.trim();
+    const title    = document.getElementById('title').value.trim();
+    const author   = document.getElementById('author').value.trim();
+    const category = document.getElementById('category').value;
+    const price    = document.getElementById('price').value;
+    const stock    = document.getElementById('stock').value;
+    const coverUrl = document.getElementById('coverUrl').value.trim();
 
     document.getElementById('success').style.display = 'none';
     document.getElementById('error').style.display   = 'none';
@@ -111,9 +125,8 @@ async function addBook() {
         return;
     }
 
-    const res = await fetch('/bookstore_api/api/admin/admin_books.php', {
+    const res = await apiFetch('/bookstore_api/api/admin/admin_books.php', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             b_title: title, b_author: author,
             category_id: category, b_price: price,

@@ -85,8 +85,21 @@
 </div>
 
 <script>
+    const adminToken = localStorage.getItem('admin_token');
+if (!adminToken) window.location.href = '/bookstore_api/admin/login.php';
+
+async function apiFetch(url, options = {}) {
+    return fetch(url, {
+        ...options,
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + adminToken,
+            ...(options.headers || {})
+        }
+    });
+}
 async function loadCategories() {
-    const res  = await fetch('/bookstore_api/api/admin/admin_categories.php');
+    const res  = await apiFetch('/bookstore_api/api/admin/admin_categories.php');
     const data = await res.json();
     const list = document.getElementById('catList');
 
@@ -110,7 +123,7 @@ async function addCategory() {
     const name = document.getElementById('newCat').value.trim();
     if (!name) return;
 
-    await fetch('/bookstore_api/api/admin/admin_categories.php', {
+    await apiFetch('/bookstore_api/api/admin/admin_categories.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ c_name: name })
@@ -124,7 +137,7 @@ async function addCategory() {
 
 async function deleteCategory(id) {
     if (!confirm('Delete this category? Books using it may be affected.')) return;
-    await fetch('/bookstore_api/api/admin/admin_categories.php', {
+    await apiFetch('/bookstore_api/api/admin/admin_categories.php', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category_id: id })
@@ -147,7 +160,7 @@ async function saveEdit() {
     const name = document.getElementById('editName').value.trim();
     if (!name) return;
 
-    await fetch('/bookstore_api/api/admin/admin_categories.php', {
+    await apiFetch('/bookstore_api/api/admin/admin_categories.php', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ category_id: id, c_name: name })

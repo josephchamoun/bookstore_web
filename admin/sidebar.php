@@ -15,6 +15,12 @@
         </a>
     </nav>
     <div class="logout">
-        <a href="logout.php">🚪 Logout</a>
+        <a href="#" onclick="logout()">Logout</a>
     </div>
+    <script>
+function logout() {
+    localStorage.removeItem('admin_token');
+    window.location.href = '/bookstore_api/admin/login.php';
+}
+</script>
 </div>

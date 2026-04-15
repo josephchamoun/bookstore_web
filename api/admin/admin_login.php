@@ -1,8 +1,13 @@
 <?php
 header('Content-Type: application/json');
-session_start();
+header('Access-Control-Allow-Origin: *');
+
+session_start(); // remove this if you want pure JWT, keep if you still want sessions for HTML pages
 
 require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../vendor/autoload.php'; // firebase/php-jwt already installed
+
+use Firebase\JWT\JWT;
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -31,7 +36,17 @@ if (!$admin || !password_verify($password, $admin['a_password_hash'])) {
     exit;
 }
 
-$_SESSION['admin_id']       = $admin['admin_id'];
-$_SESSION['admin_username'] = $admin['a_username'];
+$secret  = 'your_admin_secret_key_change_this'; // use a long random string
+$payload = [
+    'admin_id' => $admin['admin_id'],
+    'username' => $admin['a_username'],
+    'iat'      => time(),
+    'exp'      => time() + (60 * 60 * 8) // 8 hours
+];
 
-echo json_encode(['message' => 'Login successful']);
+$token = JWT::encode($payload, $secret, 'HS256');
+
+echo json_encode([
+    'message' => 'Login successful',
+    'token'   => $token
+]);

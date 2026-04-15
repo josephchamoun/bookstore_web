@@ -72,9 +72,22 @@
 
 <script>
 let allBooks = [];
+const adminToken = localStorage.getItem('admin_token');
+if (!adminToken) window.location.href = '/bookstore_api/admin/login.php';
+
+async function apiFetch(url, options = {}) {
+    return fetch(url, {
+        ...options,
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + adminToken,
+            ...(options.headers || {})
+        }
+    });
+}
 
 async function loadBooks() {
-    const res  = await fetch('/bookstore_api/api/admin/admin_books.php');
+    const res  = await apiFetch('/bookstore_api/api/admin/admin_books.php');
     const data = await res.json();
     allBooks   = data.books || [];
     renderBooks(allBooks);
@@ -114,7 +127,7 @@ function filterBooks() {
 
 async function deleteBook(id) {
     if (!confirm('Are you sure you want to delete this book?')) return;
-    await fetch('/bookstore_api/api/admin/admin_books.php', {
+    await apiFetch('/bookstore_api/api/admin/admin_books.php', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ book_id: id })

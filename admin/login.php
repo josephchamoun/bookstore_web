@@ -131,11 +131,12 @@ async function login() {
     });
     const data = await res.json();
 
-    if (res.ok) {
-        window.location.href = '/bookstore_api/admin/dashboard.php';
-    } else {
-        error.style.display = 'block';
-    }
+if (res.ok) {
+    localStorage.setItem('admin_token', data.token); // ← this line was missing
+    window.location.href = '/bookstore_api/admin/dashboard.php';
+} else {
+    error.style.display = 'block';
+}
 }
 
 // Allow Enter key

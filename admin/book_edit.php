@@ -66,9 +66,19 @@
             </div>
         </div>
 
-        <label>COVER IMAGE URL</label>
-        <input type="text" id="coverUrl" oninput="previewCover()" />
-        <img id="preview" class="preview" />
+        <label>COVER IMAGE</label>
+        <div style="display:flex;align-items:center;gap:16px;margin-top:6px">
+            <img id="preview" class="preview" style="display:none;width:80px;height:110px;object-fit:cover;border-radius:6px" />
+            <div>
+                <input type="file" id="coverFile" accept="image/*" onchange="uploadCover()" style="display:none" />
+                <button type="button" class="btn" onclick="document.getElementById('coverFile').click()"
+                    style="background:#242424;color:#fff;border:1px solid #2a2a2a">
+                    📁 Choose Image
+                </button>
+                <div id="uploadStatus" style="font-size:12px;color:#9e9e9e;margin-top:6px">No image selected</div>
+            </div>
+        </div>
+        <input type="hidden" id="coverUrl" />
 
         <div class="success" id="success">✓ Book updated successfully!</div>
         <div class="error"   id="error">Failed to update book.</div>
@@ -109,8 +119,14 @@ async function loadData() {
     document.getElementById('author').value   = book.b_author;
     document.getElementById('price').value    = book.b_price;
     document.getElementById('stock').value    = book.b_stock;
-    document.getElementById('coverUrl').value = book.b_cover_url;
-    document.getElementById('preview').src    = book.b_cover_url;
+    const existingUrl = book.b_cover_url;
+    if (existingUrl) {
+        document.getElementById('coverUrl').value          = existingUrl;
+        document.getElementById('preview').src             = existingUrl;
+        document.getElementById('preview').style.display   = 'block';
+        document.getElementById('uploadStatus').textContent = '✓ Current cover loaded';
+    }
+
 
     const sel = document.getElementById('category');
     (catsData.categories || []).forEach(c => {
@@ -142,6 +158,35 @@ async function updateBook() {
 
     if (res.ok) document.getElementById('success').style.display = 'block';
     else        document.getElementById('error').style.display   = 'block';
+}
+
+async function uploadCover() {
+    const file = document.getElementById('coverFile').files[0];
+    if (!file) return;
+
+    document.getElementById('uploadStatus').textContent = 'Uploading...';
+
+    const formData = new FormData();
+    formData.append('cover', file);
+
+    const res = await fetch('/bookstore_api/api/admin/upload_cover.php', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + adminToken },
+        body: formData
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+        document.getElementById('coverUrl').value      = data.url;
+        document.getElementById('preview').src         = data.url;
+        document.getElementById('preview').style.display = 'block';
+        document.getElementById('uploadStatus').textContent = '✓ Uploaded';
+        document.getElementById('uploadStatus').style.color = '#4caf50';
+    } else {
+        document.getElementById('uploadStatus').textContent = data.error || 'Upload failed';
+        document.getElementById('uploadStatus').style.color = '#f44336';
+    }
 }
 
 loadData();

@@ -66,9 +66,19 @@
             </div>
         </div>
 
-        <label>COVER IMAGE URL</label>
-        <input type="text" id="coverUrl" placeholder="https://..." oninput="previewCover()" />
-        <img id="preview" class="preview" />
+        <label>COVER IMAGE</label>
+        <div style="display:flex;align-items:center;gap:16px;margin-top:6px">
+            <img id="preview" class="preview" style="display:none;width:80px;height:110px;object-fit:cover;border-radius:6px" />
+            <div>
+                <input type="file" id="coverFile" accept="image/*" onchange="uploadCover()" style="display:none" />
+                <button type="button" class="btn" onclick="document.getElementById('coverFile').click()"
+                    style="background:#242424;color:#fff;border:1px solid #2a2a2a">
+                    📁 Choose Image
+                </button>
+                <div id="uploadStatus" style="font-size:12px;color:#9e9e9e;margin-top:6px">No image selected</div>
+            </div>
+        </div>
+        <input type="hidden" id="coverUrl" />
 
         <div class="success" id="success">✓ Book added successfully!</div>
         <div class="error"   id="error">Failed to add book. Please check all fields.</div>
@@ -101,11 +111,33 @@ async function loadCategories() {
     });
 }
 
-function previewCover() {
-    const url     = document.getElementById('coverUrl').value;
-    const preview = document.getElementById('preview');
-    if (url) { preview.src = url; preview.style.display = 'block'; }
-    else      { preview.style.display = 'none'; }
+async function uploadCover() {
+    const file = document.getElementById('coverFile').files[0];
+    if (!file) return;
+
+    document.getElementById('uploadStatus').textContent = 'Uploading...';
+
+    const formData = new FormData();
+    formData.append('cover', file);
+
+    const res = await fetch('/bookstore_api/api/admin/upload_cover.php', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + adminToken },
+        body: formData
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+        document.getElementById('coverUrl').value      = data.url;
+        document.getElementById('preview').src         = data.url;
+        document.getElementById('preview').style.display = 'block';
+        document.getElementById('uploadStatus').textContent = '✓ Uploaded';
+        document.getElementById('uploadStatus').style.color = '#4caf50';
+    } else {
+        document.getElementById('uploadStatus').textContent = data.error || 'Upload failed';
+        document.getElementById('uploadStatus').style.color = '#f44336';
+    }
 }
 
 async function addBook() {

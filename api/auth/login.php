@@ -1,4 +1,6 @@
 <?php
+ini_set('display_errors', 0);
+error_reporting(0);
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -24,13 +26,22 @@ if (!$email || !$password) {
 }
 
 $pdo  = getDB();
-$stmt = $pdo->prepare('SELECT user_id, u_name, u_password_hash FROM users WHERE u_email = ?');
+$stmt = $pdo->prepare('SELECT user_id, u_name, u_password_hash, status, ban_reason FROM users WHERE u_email = ?');
 $stmt->execute([$email]);
 $user = $stmt->fetch();
 
 if (!$user || !password_verify($password, $user['u_password_hash'])) {
     http_response_code(401);
     echo json_encode(['error' => 'Invalid credentials']);
+    exit;
+}
+
+if ($user['status'] === 'banned') {
+    http_response_code(403);
+    echo json_encode([
+        'error'      => 'banned',
+        'ban_reason' => 'Ban Reason: ' . ($user['ban_reason'] ?? 'You have been banned.')
+    ]);
     exit;
 }
 

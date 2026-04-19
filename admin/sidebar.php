@@ -16,6 +16,10 @@
         <a href="users.php" class="<?= basename($_SERVER['PHP_SELF']) === 'users.php' ? 'active' : '' ?>">
             <span class="icon">👥</span> Users
         </a>
+
+        <a href="reviews.php" class="<?= basename($_SERVER['PHP_SELF']) === 'reviews.php' ? 'active' : '' ?>">
+            <span class="icon">💬</span> Reviews
+        </a>
     </nav>
     <div class="logout">
         <a href="#" onclick="logout()">Logout</a>

@@ -1,0 +1,8 @@
+# Allow PDF files to be served directly
+
+# Block any PHP execution for security
+
+<FilesMatch "\.php$">
+Order allow,deny
+Deny from all
+</FilesMatch>

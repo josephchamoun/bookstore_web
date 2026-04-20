@@ -21,9 +21,16 @@ if (!$id) {
 }
 
 $pdo  = getDB();
-$stmt = $pdo->prepare('SELECT b.*, c.c_name FROM books b 
-                       JOIN categories c ON b.category_id = c.category_id
-                       WHERE b.book_id = ?');
+$stmt = $pdo->prepare('
+    SELECT 
+        b.*,
+        c.c_name,
+        CASE WHEN b.b_pdf_url IS NOT NULL AND b.b_pdf_url != \'\'
+             THEN 1 ELSE 0 END AS has_ebook
+    FROM books b
+    JOIN categories c ON b.category_id = c.category_id
+    WHERE b.book_id = ?
+');
 $stmt->execute([$id]);
 $book = $stmt->fetch();
 

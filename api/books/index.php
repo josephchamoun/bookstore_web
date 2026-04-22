@@ -35,9 +35,24 @@ if (!empty($_GET['search'])) {
     $params[] = '%' . $_GET['search'] . '%';
 }
 
+// Only return books changed after this timestamp
+if (!empty($_GET['since'])) {
+    $sql     .= ' AND b.updated_at > ?';
+    $params[] = $_GET['since'];
+}
+
 $sql .= ' ORDER BY b.b_title';
 
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
+$books = $stmt->fetchAll();
 
-echo json_encode(['books' => $stmt->fetchAll()]);
+// Get MAX updated_at from the FULL table (not just filtered results)
+// so Android always knows the true latest timestamp
+$maxStmt = $pdo->query('SELECT MAX(updated_at) as last_updated FROM books');
+$maxUpdated = $maxStmt->fetch()['last_updated'];
+
+echo json_encode([
+    'books'        => $books,
+    'last_updated' => $maxUpdated
+]);

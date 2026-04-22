@@ -14,12 +14,21 @@ if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
 }
 
 $userId = requireAuth();
+$pdo    = getDB();
 
-$pdo  = getDB();
+$sql    = 'SELECT * FROM orders WHERE user_id = ?';
+$params = [$userId];
 
-// Fetch all orders for this user
-$stmt = $pdo->prepare('SELECT * FROM orders WHERE user_id = ? ORDER BY order_date DESC');
-$stmt->execute([$userId]);
+// Only return orders changed after this timestamp
+if (!empty($_GET['since'])) {
+    $sql     .= ' AND updated_at > ?';
+    $params[] = $_GET['since'];
+}
+
+$sql .= ' ORDER BY order_date DESC';
+
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
 $orders = $stmt->fetchAll();
 
 // Attach items to each order
@@ -32,4 +41,12 @@ foreach ($orders as &$order) {
     $order['items'] = $stmt->fetchAll();
 }
 
-echo json_encode(['orders' => $orders]);
+// MAX updated_at from full user orders — not just filtered results
+$maxStmt = $pdo->prepare('SELECT MAX(updated_at) as last_updated FROM orders WHERE user_id = ?');
+$maxStmt->execute([$userId]);
+$maxUpdated = $maxStmt->fetch()['last_updated'];
+
+echo json_encode([
+    'orders'       => $orders,
+    'last_updated' => $maxUpdated
+]);

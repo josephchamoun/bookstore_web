@@ -286,29 +286,25 @@ function renderUsers() {
         return;
     }
 
-    tbody.innerHTML = users.map(u => `
-        <tr>
-            <td>${u.u_name}</td>
-            <td>${u.u_email}</td>
-            <td>
-                <span class="status ${u.status}">
-                    ${u.status}
-                </span>
-            </td>
-            <td>
-                ${u.status === 'active'
-                    ? `<button class="btn ban" onclick="changeStatus(${u.user_id}, 'banned')">Ban</button>`
-                    : `<button class="btn unban" onclick="changeStatus(${u.user_id}, 'active')">Unban</button>`
-                }
-            </td>
-        </tr>
-    `).join('');
+tbody.innerHTML = users.map(u => `
+    <tr>
+        <td>${u.u_name}</td>
+        <td>${u.u_email}</td>
+        <td><span class="status ${u.status}">${u.status}</span></td>
+        <td>
+            ${u.status === 'active'
+                // ← CHANGED: String ID in quotes
+                ? `<button class="btn ban" onclick="changeStatus('${u.user_id}', 'banned')">Ban</button>`
+                : `<button class="btn unban" onclick="changeStatus('${u.user_id}', 'active')">Unban</button>`
+            }
+        </td>
+    </tr>
+`).join('');
 }
 
 /* BAN / UNBAN */
 async function changeStatus(userId, status) {
     let ban_reason = null;
-
     if (status === 'banned') {
         ban_reason = prompt("Enter ban reason:");
         if (!ban_reason) return;
@@ -316,19 +312,11 @@ async function changeStatus(userId, status) {
 
     await api('/bookstore_api/api/admin/admin_users.php', {
         method: 'PUT',
-        body: JSON.stringify({
-            user_id: userId,
-            status,
-            ban_reason
-        })
+        body: JSON.stringify({ user_id: userId, status, ban_reason })
     });
 
     const user = allUsers.find(u => u.user_id === userId);
-    if (user) {
-        user.status = status;
-        user.ban_reason = ban_reason;
-    }
-
+    if (user) { user.status = status; user.ban_reason = ban_reason; }
     renderUsers();
     showToast();
 }

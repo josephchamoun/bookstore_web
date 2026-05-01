@@ -9,97 +9,88 @@ require_once __DIR__ . '/../../config/admin_auth.php';
 
 requireAdminAuth();
 
-$pdo    = getDB();
-$method = $_SERVER['REQUEST_METHOD'];
+$method   = $_SERVER['REQUEST_METHOD'];
+$isUpdate = ($method === 'PUT') ||
+            ($method === 'POST' && ($_GET['action'] ?? '') === 'update');
 
-// ── PDF upload helper ─────────────────────────────────────────────────────────
-function handlePdfUpload(): ?string {
-    if (!isset($_FILES['b_pdf']) || $_FILES['b_pdf']['error'] === UPLOAD_ERR_NO_FILE) {
-        return null; // no file uploaded — not an error
+// ── Upload cover to Firebase Storage REST API ─────────────────────────────────
+function handleCoverUpload(string $bookId): ?string {
+    if (!isset($_FILES['b_cover']) || $_FILES['b_cover']['error'] === UPLOAD_ERR_NO_FILE) {
+        return null;
     }
-
-    $file = $_FILES['b_pdf'];
-
+    $file = $_FILES['b_cover'];
     if ($file['error'] !== UPLOAD_ERR_OK) {
         http_response_code(400);
-        echo json_encode(['error' => 'PDF upload failed with code: ' . $file['error']]);
+        echo json_encode(['error' => 'Cover upload failed']);
         exit;
     }
+    return uploadToStorage($file['tmp_name'], 'covers/' . $bookId . '_' . uniqid() . '.jpg', $file['type'], true);
+}
 
-    // Validate it's actually a PDF
-    $finfo    = finfo_open(FILEINFO_MIME_TYPE);
-    $mimeType = finfo_file($finfo, $file['tmp_name']);
-    finfo_close($finfo);
-
-    if ($mimeType !== 'application/pdf') {
+// ── Upload PDF to Firebase Storage REST API ───────────────────────────────────
+function handlePdfUpload(string $bookId): ?string {
+    if (!isset($_FILES['b_pdf']) || $_FILES['b_pdf']['error'] === UPLOAD_ERR_NO_FILE) {
+        return null;
+    }
+    $file = $_FILES['b_pdf'];
+    if ($file['error'] !== UPLOAD_ERR_OK) {
         http_response_code(400);
-        echo json_encode(['error' => 'Only PDF files are allowed']);
+        echo json_encode(['error' => 'PDF upload failed']);
         exit;
     }
-
-    // Max 50MB
     if ($file['size'] > 50 * 1024 * 1024) {
         http_response_code(400);
         echo json_encode(['error' => 'PDF must be under 50MB']);
         exit;
     }
-
-    // Save to uploads/pdfs/
-    $uploadDir = __DIR__ . '/../../uploads/pdfs/';
-    if (!is_dir($uploadDir)) {
-        mkdir($uploadDir, 0755, true);
-    }
-
-    $fileName = uniqid('book_', true) . '.pdf';
-    $destPath = $uploadDir . $fileName;
-
-    if (!move_uploaded_file($file['tmp_name'], $destPath)) {
-        http_response_code(500);
-        echo json_encode(['error' => 'Failed to save PDF file']);
-        exit;
-    }
-
-    // Return relative URL Android will use
-    return 'uploads/pdfs/' . $fileName;
+    return uploadToStorage($file['tmp_name'], 'ebooks/' . $bookId . '_' . uniqid() . '.pdf', 'application/pdf', false);
 }
 
-// ── Delete old PDF file from disk ─────────────────────────────────────────────
-function deleteOldPdf(string $pdfUrl): void {
-    if (empty($pdfUrl)) return;
-    $fullPath = __DIR__ . '/../../' . $pdfUrl;
-    if (file_exists($fullPath)) {
-        unlink($fullPath);
-    }
-}
+// ── Upload file to Firebase Storage via REST ──────────────────────────────────
+function uploadToStorage(string $filePath, string $storagePath, string $mimeType, bool $public): string {
+    $bucket      = FIREBASE_PROJECT_ID . '.appspot.com';
+    $token       = getAccessToken();
+    $encodedPath = urlencode($storagePath);
+    $url         = "https://storage.googleapis.com/upload/storage/v1/b/{$bucket}/o?uploadType=media&name={$encodedPath}";
+    if ($public) $url .= '&predefinedAcl=publicRead';
 
-// Determine if this is a create or update
-// PUT can't receive multipart, so edit_book.php sends POST with ?action=update
-$isUpdate = ($method === 'PUT') || 
-            ($method === 'POST' && ($_GET['action'] ?? '') === 'update');
+    $options = [
+        'http' => [
+            'method'  => 'POST',
+            'header'  => "Authorization: Bearer $token\r\nContent-Type: $mimeType\r\n",
+            'content' => file_get_contents($filePath),
+            'ignore_errors' => true,
+        ]
+    ];
+
+    $context = stream_context_create($options);
+    file_get_contents($url, false, $context);
+
+    if ($public) {
+        return "https://storage.googleapis.com/{$bucket}/{$storagePath}";
+    }
+    return "gs://{$bucket}/{$storagePath}";
+}
 
 switch (true) {
 
     // ── GET all books ─────────────────────────────────────────────────────────
     case $method === 'GET':
-        $stmt = $pdo->query('
-            SELECT b.*, c.c_name,
-                   CASE WHEN b.b_pdf_url IS NOT NULL AND b.b_pdf_url != \'\'
-                        THEN 1 ELSE 0 END AS has_ebook
-            FROM books b
-            JOIN categories c ON b.category_id = c.category_id
-            ORDER BY b.b_title
-        ');
-        echo json_encode(['books' => $stmt->fetchAll()]);
+        $books = fsGetCollection('books');
+        foreach ($books as &$b) $b['book_id'] = $b['id'];
+        usort($books, fn($a, $b) => strcmp($a['title'] ?? '', $b['title'] ?? ''));
+        echo json_encode(['books' => $books]);
         break;
 
     // ── POST add new book ─────────────────────────────────────────────────────
     case $method === 'POST' && !$isUpdate:
-        $categoryId = $_POST['category_id']  ?? null;
-        $title      = $_POST['b_title']      ?? '';
-        $author     = $_POST['b_author']     ?? '';
-        $price      = $_POST['b_price']      ?? 0;
-        $stock      = $_POST['b_stock']      ?? 0;
-        $coverUrl   = $_POST['b_cover_url']  ?? '';
+        $categoryId   = $_POST['category_id']  ?? '';
+        $categoryName = $_POST['category_name'] ?? '';
+        $title        = $_POST['b_title']       ?? '';
+        $author       = $_POST['b_author']      ?? '';
+        $price        = (float)($_POST['b_price'] ?? 0);
+        $stock        = (int)($_POST['b_stock']   ?? 0);
+        $coverUrl     = $_POST['b_cover_url']   ?? '';
 
         if (!$categoryId || !$title || !$author) {
             http_response_code(400);
@@ -107,32 +98,49 @@ switch (true) {
             exit;
         }
 
-        $pdfUrl = handlePdfUpload();
+        // Generate a temp ID for file naming
+        $bookId = uniqid('book_', true);
 
-        $stmt = $pdo->prepare('
-            INSERT INTO books (category_id, b_title, b_author, b_price, b_stock, b_cover_url, b_pdf_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ');
-        $stmt->execute([$categoryId, $title, $author, $price, $stock, $coverUrl, $pdfUrl]);
+        $uploadedCover = handleCoverUpload($bookId);
+        $uploadedPdf   = handlePdfUpload($bookId);
+
+        $finalCoverUrl = $uploadedCover ?? $coverUrl;
+        $hasEbook      = $uploadedPdf !== null;
+        $ebookUrl      = $uploadedPdf ?? '';
+
+        // ← CHANGED: fsAddDocument instead of $ref->set()
+        $newId = fsAddDocument('books', [
+            'title'        => $title,
+            'author'       => $author,
+            'price'        => $price,
+            'stock'        => $stock,
+            'coverUrl'     => $finalCoverUrl,
+            'categoryId'   => $categoryId,
+            'categoryName' => $categoryName,
+            'hasEbook'     => $hasEbook,
+            'ebookUrl'     => $ebookUrl,
+            'favorites'    => [],
+        ]);
 
         http_response_code(201);
         echo json_encode([
             'message'   => 'Book added',
-            'book_id'   => $pdo->lastInsertId(),
-            'has_ebook' => $pdfUrl !== null
+            'book_id'   => $newId,
+            'has_ebook' => $hasEbook
         ]);
         break;
 
-    // ── PUT/POST?action=update — edit existing book ───────────────────────────
+    // ── POST?action=update — edit existing book ───────────────────────────────
     case $isUpdate:
-        $bookId     = $_POST['book_id']      ?? null;
-        $categoryId = $_POST['category_id']  ?? null;
-        $title      = $_POST['b_title']      ?? '';
-        $author     = $_POST['b_author']     ?? '';
-        $price      = $_POST['b_price']      ?? 0;
-        $stock      = $_POST['b_stock']      ?? 0;
-        $coverUrl   = $_POST['b_cover_url']  ?? '';
-        $removePdf  = ($_POST['remove_pdf']  ?? '0') === '1';
+        $bookId       = $_POST['book_id']       ?? '';
+        $categoryId   = $_POST['category_id']   ?? '';
+        $categoryName = $_POST['category_name'] ?? '';
+        $title        = $_POST['b_title']       ?? '';
+        $author       = $_POST['b_author']      ?? '';
+        $price        = (float)($_POST['b_price'] ?? 0);
+        $stock        = (int)($_POST['b_stock']   ?? 0);
+        $coverUrl     = $_POST['b_cover_url']   ?? '';
+        $removePdf    = ($_POST['remove_pdf']   ?? '0') === '1';
 
         if (!$bookId || !$categoryId || !$title || !$author) {
             http_response_code(400);
@@ -140,43 +148,42 @@ switch (true) {
             exit;
         }
 
-        // Get existing PDF URL
-        $existing      = $pdo->prepare('SELECT b_pdf_url FROM books WHERE book_id = ?');
-        $existing->execute([$bookId]);
-        $currentPdfUrl = $existing->fetchColumn() ?: '';
+        $uploadedCover = handleCoverUpload($bookId);
+        $uploadedPdf   = handlePdfUpload($bookId);
 
-        $newPdfUrl = $currentPdfUrl; // default: keep existing
+        // Build update data
+        $updates = [
+            'title'        => $title,
+            'author'       => $author,
+            'price'        => $price,
+            'stock'        => $stock,
+            'categoryId'   => $categoryId,
+            'categoryName' => $categoryName,
+        ];
 
-        if ($removePdf) {
-            deleteOldPdf($currentPdfUrl);
-            $newPdfUrl = null;
-        } else {
-            $uploaded = handlePdfUpload();
-            if ($uploaded !== null) {
-                deleteOldPdf($currentPdfUrl);
-                $newPdfUrl = $uploaded;
-            }
+        if ($uploadedCover) {
+            $updates['coverUrl'] = $uploadedCover;
+        } elseif ($coverUrl) {
+            $updates['coverUrl'] = $coverUrl;
         }
 
-        $stmt = $pdo->prepare('
-            UPDATE books
-            SET category_id=?, b_title=?, b_author=?, b_price=?, b_stock=?, b_cover_url=?, b_pdf_url=?
-            WHERE book_id=?
-        ');
-        $stmt->execute([
-            $categoryId, $title, $author, $price, $stock, $coverUrl, $newPdfUrl, $bookId
-        ]);
+        if ($removePdf) {
+            $updates['hasEbook'] = false;
+            $updates['ebookUrl'] = '';
+        } elseif ($uploadedPdf) {
+            $updates['hasEbook'] = true;
+            $updates['ebookUrl'] = $uploadedPdf;
+        }
 
-        echo json_encode([
-            'message'   => 'Book updated',
-            'has_ebook' => !empty($newPdfUrl)
-        ]);
+        // ← CHANGED: fsUpdateDocument instead of ->update()
+        fsUpdateDocument('books', $bookId, $updates);
+        echo json_encode(['message' => 'Book updated']);
         break;
 
     // ── DELETE book ───────────────────────────────────────────────────────────
     case $method === 'DELETE':
         $data   = json_decode(file_get_contents('php://input'), true);
-        $bookId = $data['book_id'] ?? null;
+        $bookId = $data['book_id'] ?? '';
 
         if (!$bookId) {
             http_response_code(400);
@@ -184,13 +191,8 @@ switch (true) {
             exit;
         }
 
-        $pdfStmt = $pdo->prepare('SELECT b_pdf_url FROM books WHERE book_id = ?');
-        $pdfStmt->execute([$bookId]);
-        $pdfUrl = $pdfStmt->fetchColumn();
-        if ($pdfUrl) deleteOldPdf($pdfUrl);
-
-        $stmt = $pdo->prepare('DELETE FROM books WHERE book_id = ?');
-        $stmt->execute([$bookId]);
+        // ← CHANGED: fsDeleteDocument instead of ->delete()
+        fsDeleteDocument('books', $bookId);
         echo json_encode(['message' => 'Book deleted']);
         break;
 

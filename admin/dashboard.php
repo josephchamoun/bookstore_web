@@ -577,7 +577,9 @@ async function loadDashboard() {
     renderRevenueChart(data.revenue_by_month);
     renderStatusChart(data.orders_by_status);
     renderBestBooks(data.best_selling_books);
+    if (data.best_categories && data.best_categories.length > 0) {
     renderCategoryChart(data.best_categories);
+}
     renderBestBuyers(data.best_buyers);
     renderRecentOrders(data.recent_orders);
 }
@@ -697,10 +699,10 @@ function renderBestBooks(books) {
     document.getElementById('bestBooks').innerHTML = books.map((b, i) => `
         <div class="rank-item">
             <div class="rank-num ${medals[i]}">${i + 1}</div>
-            <img class="rank-cover" src="${b.b_cover_url || ''}" onerror="this.style.display='none'" />
+            <img class="rank-cover" src="${b.coverUrl || ''}" onerror="this.style.display='none'" />
             <div class="rank-info">
-                <div class="rank-title">${b.b_title}</div>
-                <div class="rank-sub">${b.b_author}</div>
+                <div class="rank-title">${b.title}</div>
+                <div class="rank-sub"></div>
             </div>
             <div class="rank-stat">
                 <div class="val">$${parseFloat(b.total_revenue).toFixed(2)}</div>
@@ -712,7 +714,7 @@ function renderBestBooks(books) {
 
 // ── Category Bar Chart ──
 function renderCategoryChart(cats) {
-    const labels   = cats.map(c => c.c_name);
+    const labels   = cats.map(c => c.name);
     const revenues = cats.map(c => parseFloat(c.total_revenue));
 
     const colors = ['#3d6ef5','#22c55e','#f59e0b','#a855f7','#14b8a6','#ef4444'];
@@ -768,13 +770,13 @@ function renderBestBuyers(buyers) {
 function renderRecentOrders(orders) {
     document.getElementById('recentOrders').innerHTML = orders.map(o => `
         <div class="order-item">
-            <div class="order-id">#${o.order_id}</div>
+            <div class="order-id">#${o.order_id.substring(0,6)}</div>
             <div class="order-info">
                 <div class="order-name">${o.u_name}</div>
                 <div class="order-date">${o.order_date}</div>
             </div>
-            <div class="order-total">$${parseFloat(o.o_total).toFixed(2)}</div>
-            <div class="status-badge status-${o.o_status}">${o.o_status}</div>
+            <div class="order-total">$${parseFloat(o.total).toFixed(2)}</div>
+            <div class="status-badge status-${o.status}">${o.status}</div>
         </div>
     `).join('');
 }

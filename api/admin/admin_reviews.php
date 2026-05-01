@@ -1,70 +1,59 @@
 <?php
-header("Access-Control-Allow-Origin: *");
-header("Content-Type: application/json");
-header("Access-Control-Allow-Methods: GET, PUT, OPTIONS");
-header("Access-Control-Allow-Headers: Authorization, Content-Type");
+header('Content-Type: application/json');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, DELETE, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { exit; }
 
-require_once '../../config/database.php';
-require_once '../../config/admin_auth.php'; // ✅ matches your admin JWT file
+require_once __DIR__ . '/../../config/database.php';
+require_once __DIR__ . '/../../config/admin_auth.php';
 
-requireAdminAuth(); // ✅ validates admin Bearer token, exits on failure
+requireAdminAuth();
 
-try {
-    $db = getDB(); // ✅ matches your config
+$method = $_SERVER['REQUEST_METHOD'];
 
-    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-        $status = $_GET['status'] ?? null;
-        $where  = $status ? "WHERE r.r_status = :status" : "";
+switch ($method) {
 
-        $stmt = $db->prepare("
-            SELECT 
-                r.review_id,
-                r.r_rating    AS rating,
-                r.r_comment   AS comment,
-                r.r_status    AS status,
-                r.r_created_at AS created_at,
-                u.u_name      AS user_name,
-                b.b_title     AS book_title
-            FROM reviews r
-            JOIN users u ON r.user_id = u.user_id
-            JOIN books b ON r.book_id = b.book_id
-            $where
-            ORDER BY r.r_created_at DESC
-        ");
+    case 'GET':
+        $reviews = fsGetCollection('reviews');
+        $result  = [];
 
-$status ? $stmt->execute([':status' => $status]) : $stmt->execute();
-        echo json_encode(["success" => true, "reviews" => $stmt->fetchAll()]);
+        foreach ($reviews as $r) {
+            $bookTitle = '';
+            $bookId    = $r['bookId'] ?? '';
+            if ($bookId) {
+                $book      = fsGetDocument('books', $bookId);
+                $bookTitle = $book['title'] ?? '';
+            }
+            $result[] = [
+                'review_id'  => $r['id'],
+                'user_name'  => $r['userName']  ?? '',
+                'book_title' => $bookTitle,
+                'rating'     => $r['rating']    ?? 0,
+                'comment'    => $r['comment']   ?? '',
+                'created_at' => $r['createdAt'] ?? '',
+            ];
+        }
 
-    } elseif ($_SERVER['REQUEST_METHOD'] === 'PUT') {
-        $data      = json_decode(file_get_contents("php://input"), true);
-        $review_id = isset($data['review_id']) ? intval($data['review_id']) : 0;
-        $action    = isset($data['action'])    ? $data['action']            : '';
+        usort($result, fn($a, $b) => strcmp($b['created_at'], $a['created_at']));
+        echo json_encode(['success' => true, 'reviews' => $result]);
+        break;
 
-        if ($review_id <= 0 || !in_array($action, ['approved', 'rejected'])) {
+    case 'DELETE':
+        $data     = json_decode(file_get_contents('php://input'), true);
+        $reviewId = $data['review_id'] ?? '';
+        if (!$reviewId) {
             http_response_code(400);
-            echo json_encode(["success" => false, "message" => "review_id and action (approved/rejected) are required"]);
+            echo json_encode(['success' => false, 'message' => 'review_id is required']);
             exit;
         }
+        fsDeleteDocument('reviews', $reviewId);
+        echo json_encode(['success' => true, 'message' => 'Review deleted']);
+        break;
 
-        $stmt = $db->prepare("UPDATE reviews SET r_status = :status WHERE review_id = :review_id");
-        $stmt->execute([':status' => $action, ':review_id' => $review_id]);
-
-        if ($stmt->rowCount() === 0) {
-            http_response_code(404);
-            echo json_encode(["success" => false, "message" => "Review not found"]);
-            exit;
-        }
-
-        echo json_encode(["success" => true, "message" => "Review " . $action]);
-
-    } else {
+    default:
         http_response_code(405);
-        echo json_encode(["success" => false, "message" => "Method not allowed"]);
-    }
-
-} catch (Exception $e) {
-    http_response_code(500);
-    echo json_encode(["success" => false, "message" => "Server error: " . $e->getMessage()]);
+        echo json_encode(['success' => false, 'message' => 'Method not allowed']);
+        break;
 }

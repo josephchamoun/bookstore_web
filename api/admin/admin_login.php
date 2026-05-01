@@ -2,10 +2,10 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 
-session_start(); // remove this if you want pure JWT, keep if you still want sessions for HTML pages
+session_start();
 
 require_once __DIR__ . '/../../config/database.php';
-require_once __DIR__ . '/../../vendor/autoload.php'; // firebase/php-jwt already installed
+require_once __DIR__ . '/../../vendor/autoload.php';
 
 use Firebase\JWT\JWT;
 
@@ -25,10 +25,8 @@ if (!$username || !$password) {
     exit;
 }
 
-$pdo  = getDB();
-$stmt = $pdo->prepare('SELECT * FROM admins WHERE a_username = ?');
-$stmt->execute([$username]);
-$admin = $stmt->fetch();
+$admins = fsQuery('admins', 'a_username', '=', $username);
+$admin  = $admins[0] ?? null;
 
 if (!$admin || !password_verify($password, $admin['a_password_hash'])) {
     http_response_code(401);
@@ -36,12 +34,12 @@ if (!$admin || !password_verify($password, $admin['a_password_hash'])) {
     exit;
 }
 
-$secret  = 'your_admin_secret_key_change_this'; // use a long random string
+$secret  = 'your_admin_secret_key_change_this';
 $payload = [
-    'admin_id' => $admin['admin_id'],
+    'admin_id' => $admin['id'],
     'username' => $admin['a_username'],
     'iat'      => time(),
-    'exp'      => time() + (60 * 60 * 8) // 8 hours
+    'exp'      => time() + (60 * 60 * 8)
 ];
 
 $token = JWT::encode($payload, $secret, 'HS256');

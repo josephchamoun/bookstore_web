@@ -108,15 +108,17 @@ async function loadCategories() {
         return;
     }
 
-    list.innerHTML = data.categories.map(c => `
-        <div class="cat-item">
-            <span class="cat-name">${c.c_name}</span>
-            <div class="cat-actions">
-                <button class="btn-edit"   onclick="openEdit(${c.category_id}, '${c.c_name}')">Edit</button>
-                <button class="btn-danger" onclick="deleteCategory(${c.category_id})">Delete</button>
-            </div>
+list.innerHTML = data.categories.map(c => `
+    <div class="cat-item">
+        
+        <span class="cat-name">${c.name}</span>
+        <div class="cat-actions">
+            
+            <button class="btn-edit"   onclick="openEdit('${c.category_id}', '${c.name}')">Edit</button>
+            <button class="btn-danger" onclick="deleteCategory('${c.category_id}')">Delete</button>
         </div>
-    `).join('');
+    </div>
+`).join('');
 }
 
 async function addCategory() {

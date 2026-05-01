@@ -143,6 +143,7 @@ async function apiFetch(url, options = {}) {
     });
 }
 
+// REPLACE loadData function
 async function loadData() {
     const [booksRes, catsRes] = await Promise.all([
         apiFetch('/bookstore_api/api/admin/admin_books.php'),
@@ -151,45 +152,48 @@ async function loadData() {
     const booksData = await booksRes.json();
     const catsData  = await catsRes.json();
 
-    const book = booksData.books?.find(b => b.book_id == bookId);
+    // ← CHANGED: book_id is now a String Firestore ID
+    const book = booksData.books?.find(b => b.book_id === bookId);
     if (!book) { alert('Book not found'); return; }
 
     document.getElementById('bookId').value  = book.book_id;
-    document.getElementById('title').value   = book.b_title;
-    document.getElementById('author').value  = book.b_author;
-    document.getElementById('price').value   = book.b_price;
-    document.getElementById('stock').value   = book.b_stock;
+    // ← CHANGED: field names match Firestore
+    document.getElementById('title').value   = book.title;
+    document.getElementById('author').value  = book.author;
+    document.getElementById('price').value   = book.price;
+    document.getElementById('stock').value   = book.stock;
 
-    // Page title
     document.getElementById('pageTitle').textContent = 'Edit Book';
-    if (book.has_ebook == 1) {
+    // ← CHANGED: hasEbook is now Boolean
+    if (book.hasEbook) {
         document.getElementById('pageTitle').innerHTML +=
             '<span class="ebook-badge">Has Ebook</span>';
     }
 
-    // Cover
-    if (book.b_cover_url) {
-        document.getElementById('coverUrl').value         = book.b_cover_url;
-        document.getElementById('preview').src            = book.b_cover_url;
-        document.getElementById('preview').style.display  = 'block';
+    if (book.coverUrl) {
+        document.getElementById('coverUrl').value          = book.coverUrl;
+        document.getElementById('preview').src             = book.coverUrl;
+        document.getElementById('preview').style.display   = 'block';
         document.getElementById('coverStatus').textContent = '✓ Current cover loaded';
     }
 
-    // Show current PDF banner if book already has one
-    if (book.has_ebook == 1) {
+    if (book.hasEbook) {
         document.getElementById('currentPdfBanner').style.display = 'flex';
         document.getElementById('pdfStatus').textContent =
             'Book already has an ebook. Upload a new PDF to replace it.';
     }
 
-    // Categories
     const sel = document.getElementById('category');
     (catsData.categories || []).forEach(c => {
-        sel.innerHTML += `<option value="${c.category_id}"
-            ${c.category_id == book.category_id ? 'selected' : ''}>
-            ${c.c_name}</option>`;
+        // ← CHANGED: use c.name instead of c.c_name
+        sel.innerHTML += `<option value="${c.category_id}" data-name="${c.name}"
+            ${c.category_id === book.categoryId ? 'selected' : ''}>
+            ${c.name}</option>`;
     });
 }
+
+
+
 
 async function uploadCover() {
     const file = document.getElementById('coverFile').files[0];
@@ -270,18 +274,20 @@ async function updateBook() {
     document.getElementById('success').style.display = 'none';
     document.getElementById('error').style.display   = 'none';
 
-    const pdfFile = document.getElementById('pdfFile').files[0];
+    const categoryEl   = document.getElementById('category');
+    const categoryName = categoryEl.options[categoryEl.selectedIndex]?.dataset.name || '';
+    const pdfFile      = document.getElementById('pdfFile').files[0];
 
-    // ── Send as FormData so PHP can receive the PDF file ─────────────────────
     const formData = new FormData();
-    formData.append('book_id',      document.getElementById('bookId').value);
-    formData.append('category_id',  document.getElementById('category').value);
-    formData.append('b_title',      document.getElementById('title').value);
-    formData.append('b_author',     document.getElementById('author').value);
-    formData.append('b_price',      document.getElementById('price').value);
-    formData.append('b_stock',      document.getElementById('stock').value);
-    formData.append('b_cover_url',  document.getElementById('coverUrl').value);
-    formData.append('remove_pdf',   removePdfFlag ? '1' : '0');
+    formData.append('book_id',       document.getElementById('bookId').value);
+    formData.append('category_id',   categoryEl.value);
+    formData.append('category_name', categoryName); // ← ADDED
+    formData.append('b_title',       document.getElementById('title').value);
+    formData.append('b_author',      document.getElementById('author').value);
+    formData.append('b_price',       document.getElementById('price').value);
+    formData.append('b_stock',       document.getElementById('stock').value);
+    formData.append('b_cover_url',   document.getElementById('coverUrl').value);
+    formData.append('remove_pdf',    removePdfFlag ? '1' : '0');
     if (pdfFile) formData.append('b_pdf', pdfFile);
 
     const res = await apiFetch('/bookstore_api/api/admin/admin_books.php?action=update', {
@@ -291,7 +297,6 @@ async function updateBook() {
 
     if (res.ok) {
         document.getElementById('success').style.display = 'block';
-        // Reload to reflect new ebook badge status
         setTimeout(() => loadData(), 1000);
     } else {
         const data = await res.json().catch(() => ({}));

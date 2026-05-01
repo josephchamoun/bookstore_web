@@ -2,7 +2,9 @@
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
 
+require_once __DIR__ . '/../../config/database.php';
 require_once __DIR__ . '/../../config/admin_auth.php';
+
 requireAdminAuth();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -33,18 +35,26 @@ if ($file['size'] > 2 * 1024 * 1024) {
     exit;
 }
 
-$uploadDir = __DIR__ . '/../../uploads/books/';
-if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
+$bucket   = FIREBASE_PROJECT_ID . '.appspot.com';
+$fileName = 'covers/cover_' . time() . '_' . rand(100, 999) . '.' . $ext;
+$token    = getAccessToken();
+$encoded  = urlencode($fileName);
 
-$filename = 'cover_' . time() . '_' . rand(100, 999) . '.' . $ext;
-$dest     = $uploadDir . $filename;
+$options = [
+    'http' => [
+        'method'  => 'POST',
+        'header'  => "Authorization: Bearer $token\r\nContent-Type: {$file['type']}\r\n",
+        'content' => file_get_contents($file['tmp_name']),
+        'ignore_errors' => true,
+    ]
+];
 
-if (!move_uploaded_file($file['tmp_name'], $dest)) {
-    http_response_code(500);
-    echo json_encode(['error' => 'Upload failed']);
-    exit;
-}
+$context = stream_context_create($options);
+file_get_contents(
+    "https://storage.googleapis.com/upload/storage/v1/b/{$bucket}/o?uploadType=media&name={$encoded}&predefinedAcl=publicRead",
+    false,
+    $context
+);
 
-$ip  = '192.168.1.7'; 
-$url = 'http://' . $ip . '/bookstore_api/uploads/books/' . $filename;
+$url = "https://storage.googleapis.com/{$bucket}/{$fileName}";
 echo json_encode(['url' => $url]);

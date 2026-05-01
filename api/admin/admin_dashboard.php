@@ -9,119 +9,149 @@ require_once __DIR__ . '/../../config/admin_auth.php';
 
 requireAdminAuth();
 
-$pdo = getDB();
+$orders = fsGetCollection('orders');
+$books  = fsGetCollection('books');
+$users  = fsGetCollection('users');
 
-// --- General Stats ---
-$totalRevenue = $pdo->query("
-    SELECT COALESCE(SUM(o_total), 0) 
-    FROM orders 
-    WHERE o_status != 'cancelled'
-")->fetchColumn();
+$totalRevenue   = 0;
+$pendingOrders  = 0;
+$ordersByStatus = [];
+$salesByBook    = [];
+$spendByUser    = [];
+$revenueByMonth = [];
+$sixMonthsAgo   = new DateTime('-6 months');
 
-$totalOrders  = $pdo->query("SELECT COUNT(*) FROM orders")->fetchColumn();
-$totalBooks   = $pdo->query("SELECT COUNT(*) FROM books")->fetchColumn();
-$totalUsers   = $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
-$pendingOrders = $pdo->query("SELECT COUNT(*) FROM orders WHERE o_status = 'pending'")->fetchColumn();
-$totalStock   = $pdo->query("SELECT COALESCE(SUM(b_stock), 0) FROM books")->fetchColumn();
+foreach ($orders as $order) {
+    $status = $order['status'] ?? 'pending';
+    $total  = (float)($order['total'] ?? 0);
 
-// --- Revenue by Month (last 6 months) ---
-$revenueByMonth = $pdo->query("
-    SELECT 
-        DATE_FORMAT(order_date, '%b %Y') AS month,
-        DATE_FORMAT(order_date, '%Y-%m') AS month_key,
-        COALESCE(SUM(o_total), 0)        AS revenue,
-        COUNT(*)                          AS order_count
-    FROM orders
-    WHERE o_status != 'cancelled'
-      AND order_date >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
-    GROUP BY month_key, month
-    ORDER BY month_key ASC
-")->fetchAll();
+    if ($status !== 'cancelled') $totalRevenue += $total;
+    if ($status === 'pending')   $pendingOrders++;
 
-// --- Orders by Status ---
-$ordersByStatus = $pdo->query("
-    SELECT o_status AS status, COUNT(*) AS count
-    FROM orders
-    GROUP BY o_status
-")->fetchAll();
+    $ordersByStatus[$status] = ($ordersByStatus[$status] ?? 0) + 1;
 
-// --- Best Selling Books ---
-$bestSellingBooks = $pdo->query("
-    SELECT 
-        b.book_id,
-        b.b_title,
-        b.b_author,
-        b.b_cover_url,
-        SUM(oi.oi_quantity)              AS total_sold,
-        SUM(oi.oi_quantity * oi.oi_unit_price) AS total_revenue
-    FROM order_items oi
-    JOIN books b ON oi.book_id = b.book_id
-    JOIN orders o ON oi.order_id = o.order_id
-    WHERE o.o_status != 'cancelled'
-    GROUP BY b.book_id, b.b_title, b.b_author, b.b_cover_url
-    ORDER BY total_sold DESC
-    LIMIT 5
-")->fetchAll();
+    // Revenue by month
+    $orderDate = $order['orderDate'] ?? '';
+    if ($orderDate && $status !== 'cancelled') {
+        try {
+            $date = new DateTime($orderDate);
+            if ($date >= $sixMonthsAgo) {
+                $monthKey   = $date->format('Y-m');
+                $monthLabel = $date->format('M Y');
+                if (!isset($revenueByMonth[$monthKey])) {
+                    $revenueByMonth[$monthKey] = [
+                        'month'       => $monthLabel,
+                        'month_key'   => $monthKey,
+                        'revenue'     => 0,
+                        'order_count' => 0,
+                    ];
+                }
+                $revenueByMonth[$monthKey]['revenue']     += $total;
+                $revenueByMonth[$monthKey]['order_count'] += 1;
+            }
+        } catch (Exception $e) {}
+    }
 
-// --- Best Categories ---
-$bestCategories = $pdo->query("
-    SELECT 
-        c.c_name,
-        SUM(oi.oi_quantity)                    AS total_sold,
-        SUM(oi.oi_quantity * oi.oi_unit_price) AS total_revenue
-    FROM order_items oi
-    JOIN books b      ON oi.book_id     = b.book_id
-    JOIN categories c ON b.category_id  = c.category_id
-    JOIN orders o     ON oi.order_id    = o.order_id
-    WHERE o.o_status != 'cancelled'
-    GROUP BY c.c_name
-    ORDER BY total_sold DESC
-")->fetchAll();
+    // Per-book and per-category sales
+    foreach ($order['items'] ?? [] as $item) {
+        if ($status === 'cancelled') continue;
+        $bookId  = $item['bookId']    ?? '';
+        $qty     = (int)($item['quantity']  ?? 0);
+        $price   = (float)($item['unitPrice'] ?? 0);
+        if (!$bookId) continue;
 
-// --- Best Buyers ---
-$bestBuyers = $pdo->query("
-    SELECT 
-        u.user_id,
-        u.u_name,
-        u.u_email,
-        COUNT(o.order_id)      AS total_orders,
-        SUM(o.o_total)         AS total_spent
-    FROM orders o
-    JOIN users u ON o.user_id = u.user_id
-    WHERE o.o_status != 'cancelled'
-    GROUP BY u.user_id, u.u_name, u.u_email
-    ORDER BY total_spent DESC
-    LIMIT 5
-")->fetchAll();
+        // Per-book
+        if (!isset($salesByBook[$bookId])) {
+            $salesByBook[$bookId] = [
+                'book_id'       => $bookId,
+                'title'         => $item['bookTitle'] ?? '',
+                'coverUrl'      => $item['coverUrl']  ?? '',
+                'total_sold'    => 0,
+                'total_revenue' => 0,
+            ];
+        }
+        $salesByBook[$bookId]['total_sold']    += $qty;
+        $salesByBook[$bookId]['total_revenue'] += $qty * $price;
 
-// --- Recent Orders ---
-$recentOrders = $pdo->query("
-    SELECT 
-        o.order_id,
-        o.o_total,
-        o.o_status,
-        o.order_date,
-        u.u_name,
-        u.u_email
-    FROM orders o
-    JOIN users u ON o.user_id = u.user_id
-    ORDER BY o.order_date DESC
-    LIMIT 5
-")->fetchAll();
+        // ← ADDED: Per-category
+        $catName = '';
+        foreach ($books as $b) {
+            if ($b['id'] === $bookId) {
+                $catName = $b['categoryName'] ?? '';
+                break;
+            }
+        }
+        if ($catName) {
+            if (!isset($salesByCat[$catName])) {
+                $salesByCat[$catName] = [
+                    'name'          => $catName,
+                    'total_sold'    => 0,
+                    'total_revenue' => 0,
+                ];
+            }
+            $salesByCat[$catName]['total_sold']    += $qty;
+            $salesByCat[$catName]['total_revenue'] += $qty * $price;
+        }
+    }
+
+    // Per-user spending
+    $userId = $order['userId'] ?? '';
+    if ($userId && $status !== 'cancelled') {
+        $spendByUser[$userId] = ($spendByUser[$userId] ?? 0) + $total;
+    }
+}
+
+// Best selling books
+usort($salesByBook, fn($a, $b) => $b['total_sold'] - $a['total_sold']);
+$bestSellingBooks = array_slice(array_values($salesByBook), 0, 5);
+
+// Best buyers
+arsort($spendByUser);
+$bestBuyers = [];
+$count = 0;
+foreach ($spendByUser as $userId => $spent) {
+    if ($count >= 5) break;
+    $user = fsGetDocument('users', $userId);
+    $bestBuyers[] = [
+        'user_id'     => $userId,
+        'u_name'      => $user['name']  ?? '',
+        'u_email'     => $user['email'] ?? '',
+        'total_spent' => $spent,
+    ];
+    $count++;
+}
+
+// Recent orders
+usort($orders, fn($a, $b) => strcmp($b['orderDate'] ?? '', $a['orderDate'] ?? ''));
+$recentOrders = array_slice($orders, 0, 5);
+foreach ($recentOrders as &$o) {
+    $o['order_id']   = $o['id'];
+    $o['order_date'] = $o['orderDate'] ?? '';
+    $user = fsGetDocument('users', $o['userId'] ?? '');
+    $o['u_name']  = $user['name']  ?? '';
+    $o['u_email'] = $user['email'] ?? '';
+}
+
+ksort($revenueByMonth);
+
+$formattedStatus = [];
+foreach ($ordersByStatus as $status => $count) {
+    $formattedStatus[] = ['status' => $status, 'count' => $count];
+}
 
 echo json_encode([
     'stats' => [
-        'total_revenue'  => (float) $totalRevenue,
-        'total_orders'   => (int)   $totalOrders,
-        'total_books'    => (int)   $totalBooks,
-        'total_users'    => (int)   $totalUsers,
-        'pending_orders' => (int)   $pendingOrders,
-        'total_stock'    => (int)   $totalStock,
+        'total_revenue'  => round($totalRevenue, 2),
+        'total_orders'   => count($orders),
+        'total_books'    => count($books),
+        'total_users'    => count($users),
+        'pending_orders' => $pendingOrders,
+        'total_stock'    => array_sum(array_column($books, 'stock')),
     ],
-    'revenue_by_month'  => $revenueByMonth,
-    'orders_by_status'  => $ordersByStatus,
-    'best_selling_books'=> $bestSellingBooks,
-    'best_categories'   => $bestCategories,
-    'best_buyers'       => $bestBuyers,
-    'recent_orders'     => $recentOrders,
+    'revenue_by_month'   => array_values($revenueByMonth),
+    'orders_by_status'   => $formattedStatus,
+    'best_selling_books' => $bestSellingBooks,
+    'best_buyers'        => $bestBuyers,
+    'best_categories' => array_values($salesByCat),
+    'recent_orders'      => $recentOrders,
 ]);

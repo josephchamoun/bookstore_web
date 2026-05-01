@@ -180,8 +180,9 @@ function renderStats() {
     const counts = { pending: 0, shipped: 0, delivered: 0, cancelled: 0 };
     let revenue = 0;
     allOrders.forEach(o => {
-        if (counts[o.o_status] !== undefined) counts[o.o_status]++;
-        if (o.o_status !== 'cancelled') revenue += parseFloat(o.o_total);
+        // ← CHANGED: use o.status instead of o.o_status
+        if (counts[o.status] !== undefined) counts[o.status]++;
+        if (o.status !== 'cancelled') revenue += parseFloat(o.total);
     });
     document.getElementById('stat-total').textContent   = allOrders.length;
     document.getElementById('stat-pending').textContent = counts.pending;
@@ -199,10 +200,10 @@ function filter(status, btn) {
 function renderOrders() {
     const orders = activeFilter === 'all'
         ? allOrders
-        : allOrders.filter(o => o.o_status === activeFilter);
+        // ← CHANGED: o.status instead of o.o_status
+        : allOrders.filter(o => o.status === activeFilter);
 
     const tbody = document.getElementById('ordersBody');
-
     if (!orders.length) {
         tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#555;padding:40px">No orders found</td></tr>';
         return;
@@ -210,30 +211,35 @@ function renderOrders() {
 
     tbody.innerHTML = orders.map(o => `
         <tr>
-            <td><strong>#${o.order_id}</strong></td>
+            
+            <td><strong>#${o.order_id.substring(0,8)}</strong></td>
             <td>
                 <div class="cust-name">${o.u_name}</div>
                 <div class="cust-email">${o.u_email}</div>
                 <div class="cust-addr">
                     <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                    ${o.o_shipping_address || '—'}
+                    
+                    ${o.shippingAddress || '—'}
                 </div>
             </td>
             <td>
-                <div class="items-count">${o.items?.length ?? 0} item${(o.items?.length ?? 0) !== 1 ? 's' : ''}</div>
-                <div class="items-list">${o.items?.map(i => i.b_title).join(', ') || '—'}</div>
+                <div class="items-count">${o.items?.length ?? 0} item(s)</div>
+              
+                <div class="items-list">${o.items?.map(i => i.bookTitle).join(', ') || '—'}</div>
             </td>
-            <td><span class="total">$${parseFloat(o.o_total).toFixed(2)}</span></td>
+            
+            <td><span class="total">$${parseFloat(o.total).toFixed(2)}</span></td>
             <td><div class="date-text">${fmtDate(o.order_date)}</div></td>
             <td>
-                <select class="status-select" onchange="updateStatus(${o.order_id}, this.value)">
-                    <option value="pending"   ${o.o_status === 'pending'   ? 'selected' : ''}>Pending</option>
-                    <option value="shipped"   ${o.o_status === 'shipped'   ? 'selected' : ''}>Shipped</option>
-                    <option value="delivered" ${o.o_status === 'delivered' ? 'selected' : ''}>Delivered</option>
-                    <option value="cancelled" ${o.o_status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
+                
+                <select class="status-select" onchange="updateStatus('${o.order_id}', this.value)">
+                    <option value="pending"   ${o.status === 'pending'   ? 'selected' : ''}>Pending</option>
+                    <option value="shipped"   ${o.status === 'shipped'   ? 'selected' : ''}>Shipped</option>
+                    <option value="delivered" ${o.status === 'delivered' ? 'selected' : ''}>Delivered</option>
+                    <option value="cancelled" ${o.status === 'cancelled' ? 'selected' : ''}>Cancelled</option>
                 </select>
-                <span class="status-badge status-${o.o_status}">
-                    ${o.o_status.charAt(0).toUpperCase() + o.o_status.slice(1)}
+                <span class="status-badge status-${o.status}">
+                    ${o.status.charAt(0).toUpperCase() + o.status.slice(1)}
                 </span>
             </td>
         </tr>
@@ -243,11 +249,10 @@ function renderOrders() {
 async function updateStatus(orderId, status) {
     await apiFetch('/bookstore_api/api/admin/admin_orders.php', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ order_id: orderId, status })
     });
     const order = allOrders.find(o => o.order_id === orderId);
-    if (order) order.o_status = status;
+    if (order) order.status = status;
     renderStats();
     renderOrders();
     const toast = document.getElementById('toast');

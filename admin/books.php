@@ -93,6 +93,7 @@ async function loadBooks() {
     renderBooks(allBooks);
 }
 
+// REPLACE renderBooks function
 function renderBooks(books) {
     const tbody = document.getElementById('booksBody');
     if (books.length === 0) {
@@ -101,27 +102,28 @@ function renderBooks(books) {
     }
     tbody.innerHTML = books.map(b => `
         <tr>
-            <td><img src="${b.b_cover_url || ''}" class="cover" onerror="this.style.display='none'" /></td>
-            <td><strong>${b.b_title}</strong></td>
-            <td style="color:#9e9e9e">${b.b_author}</td>
-            <td><span class="badge">${b.c_name}</span></td>
-            <td style="color:#2d6ef5">$${parseFloat(b.b_price).toFixed(2)}</td>
-            <td>${b.b_stock}</td>
+            <td><img src="${b.coverUrl || ''}" class="cover" onerror="this.style.display='none'" /></td>
+            <td><strong>${b.title}</strong></td>
+            <td style="color:#9e9e9e">${b.author}</td>
+            <td><span class="badge">${b.categoryName || ''}</span></td>
+            <td style="color:#2d6ef5">$${parseFloat(b.price).toFixed(2)}</td>
+            <td>${b.stock}</td>
             <td>
                 <div class="actions">
                     <a href="book_edit.php?id=${b.book_id}" class="btn btn-edit">Edit</a>
-                    <button class="btn btn-danger" onclick="deleteBook(${b.book_id})">Delete</button>
+                    <button class="btn btn-danger" onclick="deleteBook('${b.book_id}')">Delete</button>
                 </div>
             </td>
         </tr>
     `).join('');
 }
 
+// REPLACE filterBooks function
 function filterBooks() {
     const q = document.getElementById('search').value.toLowerCase();
     renderBooks(allBooks.filter(b =>
-        b.b_title.toLowerCase().includes(q) ||
-        b.b_author.toLowerCase().includes(q)
+        b.title.toLowerCase().includes(q) ||
+        b.author.toLowerCase().includes(q)
     ));
 }
 

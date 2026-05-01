@@ -4,7 +4,7 @@ require_once __DIR__ . '/../vendor/autoload.php';
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
 
-define('ADMIN_JWT_SECRET', 'your_admin_secret_key_change_this'); // same key as above
+define('ADMIN_JWT_SECRET', 'your_admin_secret_key_change_this');
 
 function requireAdminAuth() {
     $headers = getallheaders();
@@ -17,11 +17,11 @@ function requireAdminAuth() {
         exit;
     }
 
-    $token = substr($auth, 7); // strip "Bearer "
+    $token = substr($auth, 7);
 
     try {
         $decoded = JWT::decode($token, new Key(ADMIN_JWT_SECRET, 'HS256'));
-        return $decoded; // contains admin_id, username
+        return $decoded;
     } catch (Exception $e) {
         http_response_code(401);
         header('Content-Type: application/json');

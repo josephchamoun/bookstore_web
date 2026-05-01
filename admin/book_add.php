@@ -137,7 +137,7 @@ async function loadCategories() {
     const data = await res.json();
     const sel  = document.getElementById('category');
     (data.categories || []).forEach(c => {
-        sel.innerHTML += `<option value="${c.category_id}">${c.c_name}</option>`;
+        sel.innerHTML += `<option value="${c.category_id}" data-name="${c.name}">${c.name}</option>`;
     });
 }
 
@@ -191,13 +191,16 @@ function removePdf() {
 }
 
 async function addBook() {
-    const title    = document.getElementById('title').value.trim();
-    const author   = document.getElementById('author').value.trim();
-    const category = document.getElementById('category').value;
-    const price    = document.getElementById('price').value;
-    const stock    = document.getElementById('stock').value;
-    const coverUrl = document.getElementById('coverUrl').value.trim();
-    const pdfFile  = document.getElementById('pdfFile').files[0];
+    const title      = document.getElementById('title').value.trim();
+    const author     = document.getElementById('author').value.trim();
+    const categoryEl = document.getElementById('category');
+    const category   = categoryEl.value;
+    // ← CHANGED: get category name from selected option
+    const categoryName = categoryEl.options[categoryEl.selectedIndex]?.dataset.name || '';
+    const price      = document.getElementById('price').value;
+    const stock      = document.getElementById('stock').value;
+    const coverUrl   = document.getElementById('coverUrl').value.trim();
+    const pdfFile    = document.getElementById('pdfFile').files[0];
 
     document.getElementById('success').style.display = 'none';
     document.getElementById('error').style.display   = 'none';
@@ -208,20 +211,19 @@ async function addBook() {
         return;
     }
 
-    // ── Send as FormData so PHP can receive the PDF file ─────────────────────
     const formData = new FormData();
-    formData.append('category_id',  category);
-    formData.append('b_title',      title);
-    formData.append('b_author',     author);
-    formData.append('b_price',      price);
-    formData.append('b_stock',      stock);
-    formData.append('b_cover_url',  coverUrl);
+    formData.append('category_id',   category);
+    formData.append('category_name', categoryName); // ← ADDED
+    formData.append('b_title',       title);
+    formData.append('b_author',      author);
+    formData.append('b_price',       price);
+    formData.append('b_stock',       stock);
+    formData.append('b_cover_url',   coverUrl);
     if (pdfFile) formData.append('b_pdf', pdfFile);
 
     const res = await apiFetch('/bookstore_api/api/admin/admin_books.php', {
         method: 'POST',
         body: formData
-        // ✅ No Content-Type header — browser sets it automatically with boundary for FormData
     });
 
     if (res.ok) {

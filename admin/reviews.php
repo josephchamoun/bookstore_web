@@ -167,14 +167,9 @@ let activeFilter = 'pending';
 // ── Load all reviews (pending + approved + rejected) ──────────────────────────
 async function loadReviews() {
     try {
-        // Fetch pending from admin endpoint
-        const pendingRes  = await apiFetch('/bookstore_api/api/admin/admin_reviews.php');
-        const pendingData = await pendingRes.json();
-
-        // We only get pending from the admin endpoint, so we fetch all statuses
-        // by hitting the endpoint and supplementing with a full query
-        // For now store what we have and render
-        allReviews = pendingData.reviews || [];
+        const res  = await apiFetch('/bookstore_api/api/admin/admin_reviews.php');
+        const data = await res.json();
+        allReviews = data.reviews || [];
         renderStats();
         renderReviews();
     } catch (e) {
@@ -182,12 +177,11 @@ async function loadReviews() {
     }
 }
 
+
 function renderStats() {
-    const counts = { pending: 0, approved: 0, rejected: 0 };
-    allReviews.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++; });
-    document.getElementById('stat-pending').textContent  = counts.pending;
-    document.getElementById('stat-approved').textContent = counts.approved;
-    document.getElementById('stat-rejected').textContent = counts.rejected;
+    document.getElementById('stat-pending').textContent  = allReviews.length;
+    document.getElementById('stat-approved').textContent = '—';
+    document.getElementById('stat-rejected').textContent = '—';
 }
 
 function filter(status, btn) {
@@ -207,39 +201,44 @@ function starsHtml(rating) {
 }
 
 function renderReviews() {
-    const list = activeFilter === 'all'
-        ? allReviews
-        : allReviews.filter(r => r.status === activeFilter);
-
     const tbody = document.getElementById('reviewsBody');
-
-    if (!list.length) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#555;padding:40px">
-            No ${activeFilter === 'all' ? '' : activeFilter} reviews found
-        </td></tr>`;
+    if (!allReviews.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#555;padding:40px">No reviews found</td></tr>';
         return;
     }
 
-    tbody.innerHTML = list.map(r => `
+    tbody.innerHTML = allReviews.map(r => `
         <tr id="row-${r.review_id}">
-            <td><strong>#${r.review_id}</strong></td>
+            <td><strong>#${r.review_id.substring(0,6)}</strong></td>
             <td><div class="book-title">${r.book_title}</div></td>
             <td><div class="user-name">${r.user_name}</div></td>
             <td>${starsHtml(parseInt(r.rating))}</td>
             <td><div class="comment-text">${r.comment}</div></td>
             <td><div class="date-text">${fmtDate(r.created_at)}</div></td>
             <td>
-                ${r.status === 'pending' ? `
-                <div class="actions">
-                    <button class="btn btn-approve" onclick="updateReview(${r.review_id}, 'approved')">✔ Approve</button>
-                    <button class="btn btn-reject"  onclick="updateReview(${r.review_id}, 'rejected')">✘ Reject</button>
-                </div>` : `
-                <span class="status-badge status-${r.status}">
-                    ${r.status.charAt(0).toUpperCase() + r.status.slice(1)}
-                </span>`}
+                <button class="btn btn-reject" onclick="deleteReview('${r.review_id}')">✘ Delete</button>
             </td>
         </tr>
     `).join('');
+}
+
+async function deleteReview(reviewId) {
+    if (!confirm('Delete this review?')) return;
+    try {
+        const res  = await apiFetch('/bookstore_api/api/admin/admin_reviews.php', {
+            method: 'DELETE',
+            body: JSON.stringify({ review_id: reviewId })
+        });
+        const data = await res.json();
+        if (data.success) {
+            allReviews = allReviews.filter(r => r.review_id !== reviewId);
+            renderStats();
+            renderReviews();
+            showToast('Review deleted ✓', true);
+        }
+    } catch (e) {
+        showToast('Network error', false);
+    }
 }
 
 async function updateReview(reviewId, action) {

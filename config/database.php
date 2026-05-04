@@ -55,8 +55,8 @@ function firestoreRequest(string $method, string $path, array $body = null): arr
 
     $options = [
         'http' => [
-            'method'  => $method,
-            'header'  => $headers,
+            'method'        => $method,
+            'header'        => $headers,
             'ignore_errors' => true,
         ]
     ];
@@ -65,24 +65,30 @@ function firestoreRequest(string $method, string $path, array $body = null): arr
         $options['http']['content'] = json_encode($body);
     }
 
-    $context = stream_context_create($options);
-    $result  = file_get_contents($url, false, $context);
-    return json_decode($result, true) ?? [];
+    $context  = stream_context_create($options);
+    $raw      = file_get_contents($url, false, $context);
+    $result   = json_decode($raw, true) ?? [];
+
+    // ← ADD THIS: surface errors immediately
+    if (isset($result['error'])) {
+        error_log("Firestore error [$method $path]: " . json_encode($result['error']));
+    }
+
+    return $result;
 }
 
 // ── Firestore value helpers ───────────────────────────────────────────────────
 
 function fsValue(mixed $value): array {
-    if (is_bool($value))   return ['booleanValue'   => $value];
-    if (is_int($value))    return ['integerValue'   => (string)$value];
-    if (is_float($value))  return ['doubleValue'    => $value];
-    if (is_null($value))   return ['nullValue'      => null];
+    if (is_bool($value))  return ['booleanValue'  => $value];
+    if (is_int($value))   return ['integerValue'  => (string)$value];
+    if (is_float($value)) return ['doubleValue'   => $value];
+    if (is_null($value))  return ['nullValue'     => null];
     if (is_array($value)) {
-        // Check if it's a list (sequential array)
-        if (array_keys($value) === range(0, count($value) - 1)) {
+        // ← empty array OR sequential array = arrayValue
+        if (empty($value) || array_keys($value) === range(0, count($value) - 1)) {
             return ['arrayValue' => ['values' => array_map('fsValue', $value)]];
         }
-        // It's a map
         $fields = [];
         foreach ($value as $k => $v) $fields[$k] = fsValue($v);
         return ['mapValue' => ['fields' => $fields]];
@@ -149,7 +155,19 @@ function fsGetDocument(string $collection, string $id): ?array {
 
 function fsAddDocument(string $collection, array $data): string {
     $result = firestoreRequest('POST', $collection, fsDoc($data));
-    return getDocId($result);
+
+    if (isset($result['error'])) {
+        error_log("fsAddDocument failed: " . json_encode($result));
+        return '';
+    }
+
+    $id = getDocId($result);
+
+    if (empty($id)) {
+        error_log("fsAddDocument: no id in response: " . json_encode($result));
+    }
+
+    return $id;
 }
 
 function fsSetDocument(string $collection, string $id, array $data): void {
